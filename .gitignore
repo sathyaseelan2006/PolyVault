@@ -1,0 +1,6 @@
+target/
+out/
+.polyvault-server.pid
+data/
+*.log
+sources_list.txt

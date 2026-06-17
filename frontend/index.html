@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PolyVault Studio | Mindmap & File Vault</title>
+  
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="grid-overlay"></div>
+
+  <div id="studio-workspace" style="display: none;">
+    <header class="brandbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-text-container">
+          <span class="kicker">PolyVault Mindmap</span>
+          <span class="brand-title">PolyVault Studio</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; position: relative;">
+        <!-- Guide Popover Button -->
+        <button id="guide-toggle-btn" class="guide-btn" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 6px 12px; font-size: 12px; border-radius: 8px; margin-right: 4px; display: flex; align-items: center; gap: 6px;"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>Guide</button>
+        
+        <!-- Popover Content -->
+        <div class="guide-popover" id="guide-popover">
+          <h4>⚡ PolyVault Studio Guide</h4>
+          <p>Interactive mindmap & vault workspace. Drag branches, upload files, and view previews in real-time.</p>
+          <ul>
+            <li><strong>Navigation</strong>: Drag the background to pan. Scroll with mouse wheel to Zoom (centered on cursor).</li>
+            <li><strong>Organizing</strong>: Drag parent folders to pull/push all descendants together.</li>
+            <li><strong>Pulse Indicator</strong>: Active/new nodes glow bright, inactive ones fade out.</li>
+            <li><strong>Previews</strong>: Select a file node and click "Preview File" for native images, PDFs, and code viewing.</li>
+          </ul>
+        </div>
+
+        <!-- User Profile display -->
+        <span id="user-display-name" style="font-size: 12px; color: var(--gold-primary); font-weight: 600; display: none;"></span>
+
+        <!-- Sign Out Button -->
+        <button id="signout-btn" class="guide-btn" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--danger); padding: 6px 12px; font-size: 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sign Out</button>
+
+        <div class="status-pill" id="server-status">
+        <span class="status-dot"></span>
+        <span id="status-text">Connecting</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="app">
+    <!-- Left Sidebar: Dock -->
+    <section class="dock" aria-label="Vault controls">
+      <!-- Sidebar Tab Buttons -->
+      <div class="sidebar-tabs" style="display: flex; gap: 8px; border-bottom: 1px solid var(--surface-border); padding-bottom: 12px; margin-bottom: 4px;">
+        <button id="tab-explorer-btn" class="active" style="flex: 1; padding: 8px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><svg class="tab-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Explorer</button>
+        <button id="tab-bookmarks-btn" style="flex: 1; padding: 8px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><svg class="tab-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Bookmarks</button>
+      </div>
+
+      <!-- Dock Tab Content 1: Explorer -->
+      <div id="tab-explorer-content" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
+        <div>
+          <p class="panel-title">Quick Zones</p>
+          <div class="mini-grid">
+            <button class="quick-chip" data-template="Projects" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="chip-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Projects</button>
+            <button class="quick-chip" data-template="Academics" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="chip-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5v-15A2.5 2.5 0 0 1 6.5 2M20 2v20"/></svg>Academics</button>
+            <button class="quick-chip" data-template="Investments" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="chip-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Investments</button>
+            <button class="quick-chip" data-template="Career" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="chip-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Career</button>
+          </div>
+        </div>
+
+        <div class="tool-block">
+          <p class="panel-title">Create Node</p>
+          <label>
+            Parent Folder Path
+            <select id="node-parent-path" aria-label="Parent folder path">
+              <option value="0">/ (Root)</option>
+            </select>
+          </label>
+          <label>
+            Node Type
+            <select id="node-kind" aria-label="Node type">
+              <option>WORKSPACE</option>
+              <option>BRANCH</option>
+              <option>FOLDER</option>
+              <option>PROJECT</option>
+              <option>NOTE</option>
+            </select>
+          </label>
+          <label>
+            Name / Directory Path
+            <input id="node-name" placeholder="e.g. DSA or Notes/Homework" aria-label="Node title">
+          </label>
+          <button class="primary" id="create-node">Create Node</button>
+        </div>
+
+        <div class="tool-block">
+          <p class="panel-title">Upload Drop</p>
+          <label>
+            Parent Folder Path
+            <select id="upload-parent-path" aria-label="Upload parent path">
+              <option value="0">/ (Root)</option>
+            </select>
+          </label>
+          <label>
+            Target Subpath (Optional)
+            <input id="upload-subpath" placeholder="e.g. Homework/PDFs" aria-label="Upload subpath">
+          </label>
+          <label>
+            Display Title
+            <input id="upload-title" placeholder="e.g. Resume, Cheat Sheet" aria-label="Upload title">
+          </label>
+          <label>
+            File
+            <input id="file-picker" type="file" aria-label="Pick file">
+          </label>
+          <button class="primary" id="upload-file">Upload File</button>
+        </div>
+
+        <div>
+          <p class="panel-title">Vibe Check: Children</p>
+          <button id="load-root" style="width: 100%; margin-bottom: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><svg class="btn-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Refresh List</button>
+          <div id="children-list" class="children"></div>
+        </div>
+      </div>
+
+      <!-- Dock Tab Content 2: Bookmarks/Mission Control -->
+      <div id="tab-bookmarks-content" style="display: none; flex-direction: column; gap: 20px; width: 100%;">
+        <div>
+          <p class="panel-title" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="panel-icon" viewBox="0 0 24 24" stroke="var(--gold-primary)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Favorites</p>
+          <div id="favs-list" class="children"></div>
+        </div>
+
+        <div>
+          <p class="panel-title" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="panel-icon" viewBox="0 0 24 24" stroke="#ff6b4a" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3.5z"/></svg>Important</p>
+          <div id="imps-list" class="children"></div>
+        </div>
+
+        <div>
+          <p class="panel-title" style="display: inline-flex; align-items: center; gap: 6px;"><svg class="panel-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Recently Visited</p>
+          <div id="recents-list" class="children"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Center View: Constellation Map -->
+    <section class="stage" aria-label="Graph stage">
+      <div class="stage-header">
+        <div>
+          <p class="kicker" id="stage-kicker">Live Constellation</p>
+          <h1 id="stage-title">My Vault</h1>
+        </div>
+        <div class="segmented" aria-label="Graph modes">
+          <button class="active" type="button">Map</button>
+          <button type="button">Timeline</button>
+          <button type="button">Focus</button>
+          <button id="toggle-sidebars-btn" type="button" style="margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;"><svg class="btn-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Full Window</button>
+        </div>
+      </div>
+      <div class="stage-viewport">
+        <svg id="graph" role="img" aria-label="PolyVault mindmap"></svg>
+      </div>
+      
+      <!-- Zoom/Pan controls -->
+      <div class="map-controls">
+        <button id="zoom-in-btn" title="Zoom In" style="display: inline-flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button id="zoom-out-btn" title="Zoom Out" style="display: inline-flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button id="reset-camera-btn" title="Reset View" style="display: inline-flex; align-items: center; justify-content: center;"><svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></button>
+      </div>
+    </section>
+
+    <!-- Right Sidebar: Inspector -->
+    <aside class="inspector" aria-label="Selected node details">
+      <div>
+        <div class="type-tag" id="node-type">Vault</div>
+        <h2 id="node-title" style="margin-top: 10px;">My Vault</h2>
+      </div>
+      
+      <p id="node-copy">Click any node to inspect details. Create sub-branches or drop versions into the selected node.</p>
+      
+      <div class="stat-grid">
+        <div class="stat">
+          <span>Node ID</span>
+          <strong id="node-id">vault-root</strong>
+        </div>
+        <div class="stat">
+          <span>Energy</span>
+          <strong id="node-activity">fresh</strong>
+        </div>
+      </div>
+
+      <!-- Traversal Parent Button -->
+      <button id="go-to-parent-btn" style="width: 100%; display: none; margin-top: 5px; align-items: center; justify-content: center; gap: 6px;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>Go to Parent Node</button>
+      
+      <div class="file-attachment-card" id="file-attachment-container" style="margin-top: 10px;">
+        <p class="panel-title" style="font-size: 10px; margin-bottom: 6px;">Attached Asset</p>
+        <p id="node-file">No file attached to this node.</p>
+        <!-- Preview Asset Button -->
+        <button id="inspect-preview-btn" class="primary" style="width: 100%; display: none; margin-top: 8px; font-size: 12px; padding: 8px 12px; align-items: center; justify-content: center; gap: 6px;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview File</button>
+      </div>
+      
+      <!-- Customization Panel -->
+      <div class="tool-block" id="customizer-panel" style="margin-top: 10px; display: none;">
+        <p class="panel-title" style="font-size: 10px; margin-bottom: 6px;">Appearance</p>
+        
+        <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
+          <label style="flex: 1;">
+            Color
+            <select id="custom-color" style="padding: 6px 10px; font-size: 11px;" aria-label="Custom Color">
+              <option value="">Default</option>
+              <option value="var(--cyan)">Cyan</option>
+              <option value="var(--pink)">Pink</option>
+              <option value="var(--lime)">Lime</option>
+              <option value="var(--amber)">Amber</option>
+              <option value="var(--purple)">Purple</option>
+              <option value="var(--stale)">Gray</option>
+            </select>
+          </label>
+          
+          <label style="flex: 1;">
+            Shape
+            <select id="custom-shape" style="padding: 6px 10px; font-size: 11px;" aria-label="Custom Shape">
+              <option value="circle">Circle</option>
+              <option value="rect">Pill/Rect</option>
+              <option value="diamond">Diamond</option>
+              <option value="hexagon">Hexagon</option>
+              <option value="triangle">Triangle</option>
+            </select>
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 16px; margin-top: 6px; font-size: 11px; color: var(--text);">
+          <label style="flex-direction: row; gap: 6px; cursor: pointer; text-transform: none; font-size: 11px; align-items: center; display: inline-flex;">
+            <input type="checkbox" id="chk-favorite" style="width: auto; margin: 0; cursor: pointer;"> <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--gold-primary)" stroke-width="2.5" fill="var(--gold-primary)" style="margin: 0 2px 0 4px; flex-shrink:0;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Favorite
+          </label>
+          <label style="flex-direction: row; gap: 6px; cursor: pointer; text-transform: none; font-size: 11px; align-items: center; display: inline-flex;">
+            <input type="checkbox" id="chk-important" style="width: auto; margin: 0; cursor: pointer;"> <svg viewBox="0 0 24 24" width="12" height="12" stroke="#ff6b4a" stroke-width="2.5" fill="#ff6b4a" style="margin: 0 2px 0 4px; flex-shrink:0;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3.5z"/></svg> Important
+          </label>
+        </div>
+
+        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 11px;">
+          <label style="text-transform: none; font-size: 11px; font-weight: 500; display: flex; flex-direction: column; gap: 4px;">
+            Quick Access (Alt + Key)
+            <select id="custom-shortcut" style="padding: 6px 10px; font-size: 11px; margin-top: 2px;" aria-label="Custom Shortcut">
+              <option value="">None</option>
+              <option value="1">Alt + 1</option>
+              <option value="2">Alt + 2</option>
+              <option value="3">Alt + 3</option>
+              <option value="4">Alt + 4</option>
+              <option value="5">Alt + 5</option>
+              <option value="6">Alt + 6</option>
+              <option value="7">Alt + 7</option>
+              <option value="8">Alt + 8</option>
+              <option value="9">Alt + 9</option>
+              <option value="a">Alt + A</option>
+              <option value="b">Alt + B</option>
+              <option value="c">Alt + C</option>
+              <option value="d">Alt + D</option>
+              <option value="e">Alt + E</option>
+              <option value="f">Alt + F</option>
+              <option value="g">Alt + G</option>
+              <option value="h">Alt + H</option>
+              <option value="i">Alt + I</option>
+              <option value="j">Alt + J</option>
+              <option value="k">Alt + K</option>
+              <option value="l">Alt + L</option>
+              <option value="m">Alt + M</option>
+              <option value="n">Alt + N</option>
+              <option value="o">Alt + O</option>
+              <option value="p">Alt + P</option>
+              <option value="q">Alt + Q</option>
+              <option value="r">Alt + R</option>
+              <option value="s">Alt + S</option>
+              <option value="t">Alt + T</option>
+              <option value="u">Alt + U</option>
+              <option value="v">Alt + V</option>
+              <option value="w">Alt + W</option>
+              <option value="x">Alt + X</option>
+              <option value="y">Alt + Y</option>
+              <option value="z">Alt + Z</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <a class="download-link" id="download-link" href="#" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><svg class="btn-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download File</a>
+      <button id="share-link-btn" style="width: 100%; display: none; margin-top: 8px; background: rgba(0,240,255,0.05); border-color: rgba(0,240,255,0.2); color: var(--cyan); align-items: center; justify-content: center; gap: 6px;"><svg class="btn-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Copy Share Link</button>
+      
+      <!-- Delete Node Button -->
+      <button id="delete-node-btn" class="danger" style="width: 100%; display: none; margin-top: 8px; align-items: center; justify-content: center; gap: 6px;"><svg class="btn-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>Delete Node & Contents</button>
+      
+      <button id="refresh" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;"><svg class="btn-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>Refresh Space Map</button>
+    </aside>
+  </main>
+
+  <!-- Floating File Preview Modal -->
+  <div class="preview-modal" id="preview-modal">
+    <div class="preview-content">
+      <div class="preview-header">
+        <h3 id="preview-filename">file_name.bin</h3>
+        <div class="preview-actions">
+          <button id="preview-share-btn" style="display: inline-flex; align-items: center; gap: 6px;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Copy Link</button>
+          <button id="preview-full-btn" class="primary" style="display: inline-flex; align-items: center; gap: 6px;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Open Full</button>
+          <button id="preview-download-btn" style="display: inline-flex; align-items: center; gap: 6px;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download</button>
+          <button class="close-btn" id="preview-close-btn" aria-label="Close Preview">&times;</button>
+        </div>
+      </div>
+      <div class="preview-body" id="preview-body">
+        <div class="status-fresh">Loading content...</div>
+      </div>
+    </div>
+  </div>
+  </div> <!-- Close #studio-workspace -->
+
+  <!-- Auth Portal -->
+  <div id="auth-portal" class="auth-portal">
+    <div class="auth-container">
+      <!-- Left Side: Orbit Constellation -->
+      <div class="auth-left">
+        <div class="constellation-wrapper">
+          <div class="constellation-orbit"></div>
+          
+          <!-- Center Node -->
+          <div class="constellation-center">
+            <div class="shield-icon">
+              <svg viewBox="0 0 24 24" width="38" height="38" stroke="var(--gold-primary)" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="center-text">
+              <span class="center-brand">POLYVAULT</span>
+              <span class="center-sub">Your World. Secured.</span>
+            </div>
+          </div>
+          
+          <!-- Orbiting Nodes (8 nodes) -->
+          <div class="orbit-node node-1" data-label="ENCRYPTION">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <span class="node-label">ENCRYPTION</span>
+          </div>
+          <div class="orbit-node node-2" data-label="AI PROTECTION">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></svg>
+            </div>
+            <span class="node-label">AI PROTECTION</span>
+          </div>
+          <div class="orbit-node node-3" data-label="ACCESS CONTROL">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            </div>
+            <span class="node-label">ACCESS CONTROL</span>
+          </div>
+          <div class="orbit-node node-4" data-label="CLOUD SYNC">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-.01c.01-.16.01-.32.01-.49A5.5 5.5 0 0 0 12.5 4a5.45 5.45 0 0 0-4.63 2.56A6.5 6.5 0 0 0 2 13a6.5 6.5 0 0 0 6.5 6.5H18a5.5 5.5 0 0 0 0-11z"/></svg>
+            </div>
+            <span class="node-label">CLOUD SYNC</span>
+          </div>
+          <div class="orbit-node node-5" data-label="ANALYTICS">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </div>
+            <span class="node-label">ANALYTICS</span>
+          </div>
+          <div class="orbit-node node-6" data-label="PRIVACY FIRST">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <span class="node-label">PRIVACY FIRST</span>
+          </div>
+          <div class="orbit-node node-7" data-label="SECURE STORAGE">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+            </div>
+            <span class="node-label">SECURE STORAGE</span>
+          </div>
+          <div class="orbit-node node-8" data-label="IDENTITY">
+            <div class="node-dot">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--gold-primary)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+            </div>
+            <span class="node-label">IDENTITY</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right Side: Dark Glassmorphic Form Card -->
+      <div class="auth-right">
+        <div class="auth-card">
+          <!-- Logo Header -->
+          <div class="auth-header-logo">
+            <div class="auth-brand-logo"></div>
+            <h2>PolyVault</h2>
+            <p class="auth-subtitle">Securing the digital space</p>
+          </div>
+          
+          <!-- Switch Tabs -->
+          <div class="auth-tabs">
+            <button id="auth-tab-login" class="auth-tab active">Sign In</button>
+            <button id="auth-tab-signup" class="auth-tab">Sign Up</button>
+          </div>
+          
+          <!-- Form Container -->
+          <div class="form-container-slider">
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active">
+              <div class="input-group">
+                <label for="login-username">USER ID / EMAIL</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </span>
+                  <input type="text" id="login-username" placeholder="Enter your username or email" required autocomplete="username">
+                </div>
+              </div>
+              
+              <div class="input-group">
+                <label for="login-password">PASSWORD</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </span>
+                  <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+                  <button type="button" class="password-toggle" id="toggle-login-pass">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="form-options">
+                <label class="checkbox-container">
+                  <input type="checkbox" id="login-remember">
+                  <span class="checkmark"></span>
+                  Remember Me
+                </label>
+                <a href="#" class="forgot-pass">Forgot Password?</a>
+              </div>
+              
+              <button type="submit" class="auth-btn">
+                <span>SIGN IN</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </form>
+            
+            <!-- Signup Form -->
+            <form id="signup-form" class="auth-form">
+              <div class="input-group">
+                <label for="signup-username">USER ID / EMAIL</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </span>
+                  <input type="text" id="signup-username" placeholder="Choose a username or email" required autocomplete="username">
+                </div>
+              </div>
+              
+              <div class="input-group">
+                <label for="signup-password">PASSWORD</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </span>
+                  <input type="password" id="signup-password" placeholder="Create a strong password" required autocomplete="new-password">
+                  <button type="button" class="password-toggle" id="toggle-signup-pass">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="input-group">
+                <label for="signup-confirm-password">CONFIRM PASSWORD</label>
+                <div class="input-wrapper">
+                  <span class="input-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </span>
+                  <input type="password" id="signup-confirm-password" placeholder="Confirm your password" required autocomplete="new-password">
+                  <button type="button" class="password-toggle" id="toggle-signup-confirm-pass">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+              
+              <button type="submit" class="auth-btn">
+                <span>CREATE ACCOUNT</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </form>
+          </div>
+          
+          <!-- Divider -->
+          <div class="auth-divider">
+            <span>or continue with</span>
+          </div>
+          
+          <!-- OAuth Buttons -->
+          <div class="oauth-buttons">
+            <button type="button" class="oauth-btn google-btn">
+              <svg viewBox="0 0 24 24" width="18" height="18">
+                <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 15 0 12 0 7.35 0 3.39 2.67 1.48 6.56l3.86 3C6.26 6.89 8.91 5.04 12 5.04z"/>
+                <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.44h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.7 2.87c2.16-1.99 3.43-4.91 3.43-8.55z"/>
+                <path fill="#FBBC05" d="M5.34 14.28c-.24-.72-.38-1.49-.38-2.28s.14-1.56.38-2.28L1.48 6.72C.54 8.61 0 10.74 0 13s.54 4.39 1.48 6.28l3.86-3z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.97-1.07 7.96-2.91l-3.7-2.87c-1.03.69-2.34 1.1-4.26 1.1-3.09 0-5.74-1.85-6.68-4.52l-3.86 3C3.39 21.33 7.35 24 12 24z"/>
+              </svg>
+              Google
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
+
+
