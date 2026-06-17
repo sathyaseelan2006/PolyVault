@@ -14,7 +14,7 @@ import {
   onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
-import { request } from './api.js';
+import { request, API_BASE } from './api.js';
 import { render, zoomBy, transform, detectType, escapeHtml, short, animateCamera } from './graph.js';
 
 // Firebase configuration (Configured with your project details)
@@ -628,7 +628,8 @@ export async function openAuthenticatedUrl(url, filename, forceDownload) {
   const token = localStorage.getItem('pv_session_token');
   const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
   try {
-    const response = await fetch(url, { headers });
+    const formattedUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? url : '/' + url}`;
+    const response = await fetch(formattedUrl, { headers });
     if (!response.ok) throw new Error("Failed to load file");
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
@@ -655,8 +656,8 @@ export async function openPreviewModal(node) {
   bodyEl.innerHTML = `<div class="status-fresh">Fetching content from server...</div>`;
   previewModal.classList.add("show");
   
-  const fileUrl = `/api/download?fileId=${node.fileId}`;
-  const downloadUrl = `/api/download?fileId=${node.fileId}&download=true`;
+  const fileUrl = `${API_BASE}/api/download?fileId=${node.fileId}`;
+  const downloadUrl = `${API_BASE}/api/download?fileId=${node.fileId}&download=true`;
   document.querySelector("#preview-download-btn").onclick = () => openAuthenticatedUrl(downloadUrl, node.filename, true);
   document.querySelector("#preview-full-btn").onclick = () => openAuthenticatedUrl(fileUrl, node.filename, false);
   document.querySelector("#preview-share-btn").onclick = () => copyShareLink(node.fileId);
