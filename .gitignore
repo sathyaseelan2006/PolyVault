@@ -4,3 +4,4 @@ out/
 data/
 *.log
 sources_list.txt
+config.properties

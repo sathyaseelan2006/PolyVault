@@ -1,0 +1,6 @@
+# PolyVault Server Configuration Template
+# Copy this file to config.properties and fill in your values
+
+server.port=8080
+firebase.api.key=YOUR_FIREBASE_API_KEY
+firebase.project.id=YOUR_PROJECT_ID
