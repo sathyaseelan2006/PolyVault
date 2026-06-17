@@ -37,6 +37,26 @@ public final class ServerConfig {
                 System.err.println("Error loading config.properties, using defaults: " + e.getMessage());
             }
         }
+
+        // Override with system environment variables for cloud hosting compatibility
+        String envPort = System.getenv("PORT");
+        if (envPort != null && !envPort.isEmpty()) {
+            try {
+                this.httpPort = Integer.parseInt(envPort);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid PORT env variable: " + envPort);
+            }
+        }
+
+        String envFirebaseKey = System.getenv("FIREBASE_API_KEY");
+        if (envFirebaseKey != null && !envFirebaseKey.isEmpty()) {
+            this.firebaseApiKey = envFirebaseKey;
+        }
+
+        String envFirebaseProjectId = System.getenv("FIREBASE_PROJECT_ID");
+        if (envFirebaseProjectId != null && !envFirebaseProjectId.isEmpty()) {
+            this.firebaseProjectId = envFirebaseProjectId;
+        }
     }
 
     public static ServerConfig getInstance() {
