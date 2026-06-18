@@ -38,11 +38,27 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     const token = await user.getIdToken();
     localStorage.setItem("pv_session_token", token);
+    
+    // Extract a friendly name from display name or email prefix
+    const rawName = user.displayName || (user.email ? user.email.split('@')[0] : 'User');
+    // Capitalize first letter for premium display
+    const friendlyName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    
     if (userDisplay) {
-      userDisplay.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${escapeHtml(user.displayName || user.email || 'User')}`;
+      userDisplay.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:6px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${escapeHtml(friendlyName)}`;
       userDisplay.style.display = "inline-flex";
       userDisplay.style.alignItems = "center";
       userDisplay.style.gap = "6px";
+    }
+    
+    // Personalize dashboard default welcome headers
+    const stageTitle = document.querySelector("#stage-title");
+    if (stageTitle && (stageTitle.textContent === "My Vault" || stageTitle.textContent.endsWith("'s Vault"))) {
+      stageTitle.textContent = `${friendlyName}'s Vault`;
+    }
+    const inspectorTitle = document.querySelector("#node-title");
+    if (inspectorTitle && (inspectorTitle.textContent === "My Vault" || inspectorTitle.textContent.endsWith("'s Vault"))) {
+      inspectorTitle.textContent = `${friendlyName}'s Vault`;
     }
   } else {
     localStorage.removeItem("pv_session_token");
@@ -260,7 +276,7 @@ export function initUiEvents() {
         // Load graph
         await loadGraph();
       } catch (err) {
-        showToast("Login failed: " + err.message);
+        showToast("Login failed: " + getFriendlyErrorMessage(err));
       }
     });
   }
@@ -293,7 +309,7 @@ export function initUiEvents() {
         // Load graph
         await loadGraph();
       } catch (err) {
-        showToast("Registration failed: " + err.message);
+        showToast("Registration failed: " + getFriendlyErrorMessage(err));
       }
     });
   }
@@ -317,7 +333,7 @@ export function initUiEvents() {
         // Load graph
         await loadGraph();
       } catch (err) {
-        showToast("Google Auth failed: " + err.message);
+        showToast("Google Auth failed: " + getFriendlyErrorMessage(err));
       }
     });
   }
@@ -973,6 +989,32 @@ function getSvgIcon(type) {
   } else {
     // Default folder
     return `<svg class="tab-icon" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+  }
+}
+
+// Translate raw Firebase Auth error codes into human-readable user messages
+function getFriendlyErrorMessage(err) {
+  const code = err.code || (err.message && err.message.includes("auth/") ? err.message.match(/auth\/[a-zA-Z0-9-]+/)?.[0] : null);
+  if (!code) return err.message;
+  
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "This email is already registered. Try signing in instead.";
+    case "auth/invalid-email":
+      return "Invalid email format. Please enter a valid email address.";
+    case "auth/weak-password":
+      return "Password is too weak. Must be at least 6 characters.";
+    case "auth/user-not-found":
+      return "No account found with this email. Please sign up first.";
+    case "auth/wrong-password":
+    case "auth/invalid-credential":
+      return "Incorrect email or password. Please try again.";
+    case "auth/too-many-requests":
+      return "Too many failed attempts. Account temporarily locked. Try again later.";
+    case "auth/operation-not-allowed":
+      return "Email/Password sign-in is disabled in the Firebase console.";
+    default:
+      return err.message;
   }
 }
 
