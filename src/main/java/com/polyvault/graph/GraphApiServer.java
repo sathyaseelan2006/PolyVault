@@ -35,6 +35,10 @@ public class GraphApiServer {
     private final String firebaseApiKey = com.polyvault.server.ServerConfig.getInstance().firebaseApiKey();
     private final String firebaseProjectId = com.polyvault.server.ServerConfig.getInstance().firebaseProjectId();
 
+    // User-specific storage and metadata stores for multi-tenancy
+    private final Map<String, MetadataStore> userMetadataStores = new ConcurrentHashMap<>();
+    private final Map<String, StorageService> userStorageServices = new ConcurrentHashMap<>();
+
     public GraphApiServer(int port, MetadataStore metadataStore, StorageService storageService, UserStore userStore) {
         this.port = port;
         this.metadataStore = metadataStore;
@@ -97,32 +101,38 @@ public class GraphApiServer {
 
         server.createContext("/api/graph", exchange -> {
             if (handleOptions(exchange)) return;
-            if (!validateSession(exchange)) return;
-            writeJson(exchange, 200, new GraphService(metadataStore).graphJson());
+            String userId = validateAndGetUserId(exchange);
+            if (userId == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(userId);
+            writeJson(exchange, 200, new GraphService(userMetaStore).graphJson());
         });
         
         server.createContext("/api/list", exchange -> {
             if (handleOptions(exchange)) return;
-            if (!validateSession(exchange)) return;
+            String userId = validateAndGetUserId(exchange);
+            if (userId == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(userId);
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
             int parentId = Integer.parseInt(query.getOrDefault("parentId", "0"));
-            writeJson(exchange, 200, metadataStore.childrenJson(parentId));
+            writeJson(exchange, 200, userMetaStore.childrenJson(parentId));
         });
         
         server.createContext("/api/nodes", exchange -> {
             if (handleOptions(exchange)) return;
-            if (!validateSession(exchange)) return;
+            String userId = validateAndGetUserId(exchange);
+            if (userId == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(userId);
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
                 int parentId = Integer.parseInt(query.getOrDefault("parentId", "0"));
-                VaultNode node = metadataStore.createNode(parentId, query.getOrDefault("type", "FOLDER"), query.getOrDefault("title", "Untitled"));
+                VaultNode node = userMetaStore.createNode(parentId, query.getOrDefault("type", "FOLDER"), query.getOrDefault("title", "Untitled"));
                 writeJson(exchange, 200, "{\"nodeId\":" + node.id() + ",\"message\":\"Node created\"}");
                 return;
             }
             if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
                 int nodeId = Integer.parseInt(query.get("nodeId"));
-                metadataStore.deleteNode(nodeId);
+                userMetaStore.deleteNode(nodeId);
                 writeJson(exchange, 200, "{\"message\":\"Node deleted recursively\"}");
                 return;
             }
@@ -131,7 +141,9 @@ public class GraphApiServer {
         
         server.createContext("/api/nodes/update", exchange -> {
             if (handleOptions(exchange)) return;
-            if (!validateSession(exchange)) return;
+            String userId = validateAndGetUserId(exchange);
+            if (userId == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(userId);
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
                 int nodeId = Integer.parseInt(query.get("nodeId"));
@@ -141,7 +153,7 @@ public class GraphApiServer {
                 boolean favorite = Boolean.parseBoolean(query.getOrDefault("favorite", "false"));
                 String shortcut = query.getOrDefault("shortcut", "");
                 
-                metadataStore.updateNodeCustomization(nodeId, color, shape, important, favorite, shortcut);
+                userMetaStore.updateNodeCustomization(nodeId, color, shape, important, favorite, shortcut);
                 writeJson(exchange, 200, "{\"nodeId\":" + nodeId + ",\"message\":\"Node customization updated\"}");
                 return;
             }
@@ -150,14 +162,17 @@ public class GraphApiServer {
         
         server.createContext("/api/upload", exchange -> {
             if (handleOptions(exchange)) return;
-            if (!validateSession(exchange)) return;
+            String userId = validateAndGetUserId(exchange);
+            if (userId == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(userId);
+            StorageService userStoreService = getStorageServiceFor(userId, userMetaStore);
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 writeJson(exchange, 405, "{\"error\":\"POST required\"}");
                 return;
             }
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
             byte[] body = exchange.getRequestBody().readAllBytes();
-            StoredFile stored = storageService.store(
+            StoredFile stored = userStoreService.store(
                     Integer.parseInt(query.getOrDefault("parentId", "0")),
                     query.getOrDefault("filename", "upload.bin"),
                     query.getOrDefault("title", query.getOrDefault("filename", "Uploaded file")),
@@ -171,17 +186,20 @@ public class GraphApiServer {
         
         server.createContext("/api/download", exchange -> {
             if (handleOptions(exchange)) return;
-            if (!validateSession(exchange)) return;
+            String userId = validateAndGetUserId(exchange);
+            if (userId == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(userId);
+            StorageService userStoreService = getStorageServiceFor(userId, userMetaStore);
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
             int fileId = Integer.parseInt(query.get("fileId"));
             String versionValue = query.getOrDefault("version", "latest");
             FileVersion version = "latest".equalsIgnoreCase(versionValue)
-                    ? metadataStore.latestVersion(fileId)
-                    : metadataStore.version(fileId, Integer.parseInt(versionValue));
+                    ? userMetaStore.latestVersion(fileId)
+                    : userMetaStore.version(fileId, Integer.parseInt(versionValue));
             ByteArrayOutputStream body = new ByteArrayOutputStream();
             
             try {
-                storageService.writeDecompressedBody(version, body);
+                userStoreService.writeDecompressedBody(version, body);
             } catch (SecurityException se) {
                 LOGGER.log(Level.WARNING, "Directory traversal blocked: {0}", se.getMessage());
                 writeJson(exchange, 403, "{\"error\":\"Forbidden: directory traversal blocked\"}");
@@ -190,7 +208,7 @@ public class GraphApiServer {
             
             byte[] bytes = body.toByteArray();
 
-            com.polyvault.metadata.FileRecord fileRecord = metadataStore.allFiles().stream()
+            com.polyvault.metadata.FileRecord fileRecord = userMetaStore.allFiles().stream()
                     .filter(f -> f.id() == fileId)
                     .findFirst()
                     .orElse(null);
@@ -198,24 +216,24 @@ public class GraphApiServer {
 
             String contentType = "application/octet-stream";
             String lower = filename.toLowerCase();
-            if (lower.endsWith(".pdf")) {
-                contentType = "application/pdf";
-            } else if (lower.endsWith(".png")) {
+            if (lower.endsWith(".png")) {
                 contentType = "image/png";
             } else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
                 contentType = "image/jpeg";
             } else if (lower.endsWith(".gif")) {
                 contentType = "image/gif";
-            } else if (lower.endsWith(".svg")) {
-                contentType = "image/svg+xml";
-            } else if (lower.endsWith(".webp")) {
-                contentType = "image/webp";
+            } else if (lower.endsWith(".pdf")) {
+                contentType = "application/pdf";
             } else if (lower.endsWith(".html")) {
                 contentType = "text/html; charset=utf-8";
             } else if (lower.endsWith(".txt") || lower.endsWith(".java") || lower.endsWith(".js") || lower.endsWith(".py") || lower.endsWith(".css")) {
                 contentType = "text/plain; charset=utf-8";
             } else if (lower.endsWith(".json")) {
                 contentType = "application/json; charset=utf-8";
+            } else if (lower.endsWith(".svg")) {
+                contentType = "image/svg+xml";
+            } else if (lower.endsWith(".webp")) {
+                contentType = "image/webp";
             }
             exchange.getResponseHeaders().add("Content-Type", contentType);
 
@@ -233,21 +251,52 @@ public class GraphApiServer {
         LOGGER.log(Level.INFO, "PolyVault web API listening on http://localhost:{0}/api/graph", String.valueOf(port));
     }
 
-    private boolean validateSession(HttpExchange exchange) throws IOException {
+    private String validateAndGetUserId(HttpExchange exchange) throws IOException {
         String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7).trim();
-            if (sessionTokenToUser.containsKey(token)) {
-                return true;
+            String cachedUid = sessionTokenToUser.get(token);
+            if (cachedUid != null) {
+                return cachedUid;
             }
             String verifiedUid = verifyFirebaseToken(token);
             if (verifiedUid != null) {
                 sessionTokenToUser.put(token, verifiedUid);
-                return true;
+                return verifiedUid;
             }
         }
         writeJson(exchange, 401, "{\"error\":\"Unauthorized\"}");
-        return false;
+        return null;
+    }
+
+    private MetadataStore getMetadataStoreFor(String userId) {
+        if (userId == null) return metadataStore; // Fallback to global/admin
+        return userMetadataStores.computeIfAbsent(userId, uid -> {
+            Path userMetaDir = com.polyvault.server.ServerConfig.getInstance().metadataDirectory()
+                    .getParent().resolve("users").resolve(uid).resolve("metadata");
+            try {
+                Files.createDirectories(userMetaDir);
+                MetadataStore ms = new MetadataStore(userMetaDir);
+                ms.initialize();
+                return ms;
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to load user metadata store", e);
+            }
+        });
+    }
+
+    private StorageService getStorageServiceFor(String userId, MetadataStore metaStore) {
+        if (userId == null) return storageService; // Fallback to global/admin
+        return userStorageServices.computeIfAbsent(userId, uid -> {
+            Path userStorageDir = com.polyvault.server.ServerConfig.getInstance().storageDirectory()
+                    .getParent().resolve("users").resolve(uid).resolve("storage");
+            try {
+                Files.createDirectories(userStorageDir);
+                return new StorageService(userStorageDir, metaStore);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to load user storage service", e);
+            }
+        });
     }
 
     private String verifyFirebaseToken(String token) {
