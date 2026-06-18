@@ -32,6 +32,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
+// Capture pending invite code on load
+const urlParams = new URLSearchParams(window.location.search);
+const inviteParam = urlParams.get("invite");
+if (inviteParam) {
+  localStorage.setItem("pv_pending_invite", inviteParam);
+}
+
 // Monitor state changes asynchronously to automatically refresh tokens
 onAuthStateChanged(auth, async (user) => {
   const userDisplay = document.querySelector("#user-display-name");
@@ -62,6 +69,24 @@ onAuthStateChanged(auth, async (user) => {
     }
     const filterPill = document.querySelector("#dashboard-view-filter");
     if (filterPill) filterPill.style.display = "flex";
+
+    // Check pending invite link
+    const pendingInvite = localStorage.getItem("pv_pending_invite");
+    if (pendingInvite) {
+      localStorage.removeItem("pv_pending_invite");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invite");
+      window.history.replaceState({}, document.title, url.pathname + url.search);
+      
+      showToast("Joining shared workspace...");
+      try {
+        await request(`/api/invite/accept?code=${encodeURIComponent(pendingInvite)}`, { method: "POST" });
+        showToast("Joined workspace successfully!");
+        loadGraph();
+      } catch (err) {
+        showToast("Failed to join workspace: " + err.message);
+      }
+    }
   } else {
     localStorage.removeItem("pv_session_token");
     if (userDisplay) {
@@ -488,6 +513,43 @@ export function initUiEvents() {
       }
     });
   }
+
+  // Generate Invite Link click event
+  const btnGenInvite = document.querySelector("#btn-gen-invite");
+  if (btnGenInvite) {
+    btnGenInvite.addEventListener("click", async () => {
+      if (!window.activeShareNodeId) return;
+      showToast("Generating invite link...");
+      try {
+        const res = await request(`/api/invite/create?nodeId=${window.activeShareNodeId}`, { method: "POST" });
+        const inviteUrl = `${window.location.origin}/?invite=${res.inviteCode}`;
+        
+        const wrapper = document.querySelector("#invite-link-wrapper");
+        const input = document.querySelector("#invite-link-url");
+        if (input) input.value = inviteUrl;
+        if (wrapper) wrapper.style.display = "flex";
+        
+        showToast("Invite link generated!");
+      } catch (err) {
+        showToast("Failed to generate link: " + err.message);
+      }
+    });
+  }
+
+  // Copy Invite Link click event
+  const btnCopyInvite = document.querySelector("#btn-copy-invite");
+  if (btnCopyInvite) {
+    btnCopyInvite.addEventListener("click", () => {
+      const input = document.querySelector("#invite-link-url");
+      if (input && input.value) {
+        input.select();
+        input.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(input.value)
+          .then(() => showToast("Copied to clipboard!"))
+          .catch(() => showToast("Failed to copy link automatically."));
+      }
+    });
+  }
 }
 
 // Toast helper
@@ -615,6 +677,10 @@ export function inspect(node, graph) {
       sharingPanel.style.display = "block";
       window.activeShareNodeId = node.nodeId;
       loadActiveShares(node.nodeId);
+      const inviteWrapper = document.querySelector("#invite-link-wrapper");
+      const inviteUrlInput = document.querySelector("#invite-link-url");
+      if (inviteWrapper) inviteWrapper.style.display = "none";
+      if (inviteUrlInput) inviteUrlInput.value = "";
     } else {
       if (sharingPanel) sharingPanel.style.display = "none";
     }

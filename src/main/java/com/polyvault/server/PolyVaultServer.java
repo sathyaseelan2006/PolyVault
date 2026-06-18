@@ -4,6 +4,7 @@ import com.polyvault.graph.GraphApiServer;
 import com.polyvault.metadata.MetadataStore;
 import com.polyvault.metadata.UserStore;
 import com.polyvault.metadata.ShareStore;
+import com.polyvault.metadata.InviteStore;
 import com.polyvault.storage.StorageService;
 
 import java.net.ServerSocket;
@@ -29,8 +30,11 @@ public class PolyVaultServer {
         ShareStore shareStore = new ShareStore(config.metadataDirectory().getParent());
         shareStore.initialize();
 
+        InviteStore inviteStore = new InviteStore(config.metadataDirectory().getParent());
+        inviteStore.initialize();
+
         StorageService storageService = new StorageService(config.storageDirectory(), metadataStore);
-        new GraphApiServer(config.httpPort(), metadataStore, storageService, userStore, shareStore).start();
+        new GraphApiServer(config.httpPort(), metadataStore, storageService, userStore, shareStore, inviteStore).start();
 
         try (ServerSocket serverSocket = new ServerSocket(config.socketPort())) {
             System.out.println("PolyVault socket server listening on port " + config.socketPort());

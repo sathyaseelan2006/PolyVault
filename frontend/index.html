@@ -354,6 +354,17 @@
                 <p style="font-size: 10px; color: var(--text-secondary); font-style: italic;">No peers added yet.</p>
               </div>
             </div>
+            
+            <div style="margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px;">
+              <p style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600;">Co-Working Invite Link</p>
+              <button class="primary" id="btn-gen-invite" style="width: 100%; padding: 6px 12px; font-size: 11px; margin-bottom: 6px;">Generate Invite Link</button>
+              <div id="invite-link-wrapper" style="display: none; flex-direction: column; gap: 4px;">
+                <div style="display: flex; gap: 6px;">
+                  <input type="text" id="invite-link-url" readonly style="flex: 1; padding: 6px 10px; font-size: 11px; background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.08); color: var(--text-secondary);" aria-label="Invite link URL">
+                  <button class="primary" id="btn-copy-invite" style="padding: 6px 12px; font-size: 11px; margin: 0; background: var(--cyan); border-color: var(--cyan); color: #000;">Copy</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

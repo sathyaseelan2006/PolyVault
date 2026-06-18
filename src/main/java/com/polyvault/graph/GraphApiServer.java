@@ -9,6 +9,8 @@ import com.polyvault.storage.StorageService;
 import com.polyvault.util.Json;
 import com.polyvault.metadata.ShareStore;
 import com.polyvault.metadata.ShareStore.ShareRecord;
+import com.polyvault.metadata.InviteStore;
+import com.polyvault.metadata.InviteStore.InviteRecord;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
@@ -37,6 +39,7 @@ public class GraphApiServer {
     private final StorageService storageService;
     private final UserStore userStore;
     private final ShareStore shareStore;
+    private final InviteStore inviteStore;
     private final Map<String, UserSessionInfo> sessionTokenToUser = new ConcurrentHashMap<>();
     private final String firebaseApiKey = com.polyvault.server.ServerConfig.getInstance().firebaseApiKey();
     private final String firebaseProjectId = com.polyvault.server.ServerConfig.getInstance().firebaseProjectId();
@@ -54,12 +57,13 @@ public class GraphApiServer {
         }
     }
 
-    public GraphApiServer(int port, MetadataStore metadataStore, StorageService storageService, UserStore userStore, ShareStore shareStore) {
+    public GraphApiServer(int port, MetadataStore metadataStore, StorageService storageService, UserStore userStore, ShareStore shareStore, InviteStore inviteStore) {
         this.port = port;
         this.metadataStore = metadataStore;
         this.storageService = storageService;
         this.userStore = userStore;
         this.shareStore = shareStore;
+        this.inviteStore = inviteStore;
     }
 
     public void start() throws Exception {
@@ -439,6 +443,67 @@ public class GraphApiServer {
             
             shareStore.removeShare(session.userId, nodeId, email);
             writeJson(exchange, 200, "{\"message\":\"Share revoked successfully\"}");
+        });
+
+        server.createContext("/api/invite/create", exchange -> {
+            if (handleOptions(exchange)) return;
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                writeJson(exchange, 405, "{\"error\":\"POST required\"}");
+                return;
+            }
+            Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+            int nodeId = Integer.parseInt(query.get("nodeId"));
+            
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+            if (userMetaStore.getNode(nodeId) == null) {
+                writeJson(exchange, 403, "{\"error\":\"Access denied: workspace not found\"}");
+                return;
+            }
+            
+            String inviteCode;
+            java.util.Optional<InviteRecord> existing = inviteStore.getInviteForWorkspace(session.userId, nodeId);
+            if (existing.isPresent()) {
+                inviteCode = existing.get().inviteCode();
+            } else {
+                inviteCode = UUID.randomUUID().toString();
+                inviteStore.addInvite(inviteCode, session.userId, session.email, nodeId);
+            }
+            
+            writeJson(exchange, 200, "{\"inviteCode\":\"" + inviteCode + "\",\"message\":\"Invite code generated successfully\"}");
+        });
+
+        server.createContext("/api/invite/accept", exchange -> {
+            if (handleOptions(exchange)) return;
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                writeJson(exchange, 405, "{\"error\":\"POST required\"}");
+                return;
+            }
+            Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+            String code = query.get("code");
+            if (code == null || code.isBlank()) {
+                writeJson(exchange, 400, "{\"error\":\"Missing invite code\"}");
+                return;
+            }
+            
+            java.util.Optional<InviteRecord> inviteOpt = inviteStore.getInvite(code);
+            if (inviteOpt.isEmpty()) {
+                writeJson(exchange, 404, "{\"error\":\"Invalid or expired invite link\"}");
+                return;
+            }
+            
+            InviteRecord invite = inviteOpt.get();
+            if (invite.ownerUid().equals(session.userId)) {
+                writeJson(exchange, 400, "{\"error\":\"You cannot join your own workspace\"}");
+                return;
+            }
+            
+            shareStore.addShare(invite.ownerUid(), invite.ownerEmail(), invite.workspaceNodeId(), session.email, "viewer");
+            
+            writeJson(exchange, 200, "{\"message\":\"Joined workspace successfully\",\"workspaceNodeId\":" + invite.workspaceNodeId() + "}");
         });
         
         server.start();
