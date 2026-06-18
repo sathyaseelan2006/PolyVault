@@ -5,3 +5,5 @@ data/
 *.log
 sources_list.txt
 config.properties
+node_modules/
+.firebase/

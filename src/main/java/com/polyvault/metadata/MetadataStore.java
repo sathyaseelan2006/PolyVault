@@ -194,6 +194,10 @@ public class MetadataStore {
         return new ArrayList<>(nodes.values());
     }
 
+    public synchronized VaultNode getNode(int nodeId) {
+        return nodes.get(nodeId);
+    }
+
     public synchronized List<FileRecord> allFiles() {
         return files.values().stream().filter(file -> !file.deleted()).toList();
     }

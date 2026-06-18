@@ -7,6 +7,11 @@ import com.polyvault.metadata.VaultNode;
 import com.polyvault.storage.StoredFile;
 import com.polyvault.storage.StorageService;
 import com.polyvault.util.Json;
+import com.polyvault.metadata.ShareStore;
+import com.polyvault.metadata.ShareStore.ShareRecord;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -31,7 +36,8 @@ public class GraphApiServer {
     private final MetadataStore metadataStore;
     private final StorageService storageService;
     private final UserStore userStore;
-    private final Map<String, String> sessionTokenToUser = new ConcurrentHashMap<>();
+    private final ShareStore shareStore;
+    private final Map<String, UserSessionInfo> sessionTokenToUser = new ConcurrentHashMap<>();
     private final String firebaseApiKey = com.polyvault.server.ServerConfig.getInstance().firebaseApiKey();
     private final String firebaseProjectId = com.polyvault.server.ServerConfig.getInstance().firebaseProjectId();
 
@@ -39,11 +45,21 @@ public class GraphApiServer {
     private final Map<String, MetadataStore> userMetadataStores = new ConcurrentHashMap<>();
     private final Map<String, StorageService> userStorageServices = new ConcurrentHashMap<>();
 
-    public GraphApiServer(int port, MetadataStore metadataStore, StorageService storageService, UserStore userStore) {
+    public static class UserSessionInfo {
+        public final String userId;
+        public final String email;
+        public UserSessionInfo(String userId, String email) {
+            this.userId = userId;
+            this.email = email;
+        }
+    }
+
+    public GraphApiServer(int port, MetadataStore metadataStore, StorageService storageService, UserStore userStore, ShareStore shareStore) {
         this.port = port;
         this.metadataStore = metadataStore;
         this.storageService = storageService;
         this.userStore = userStore;
+        this.shareStore = shareStore;
     }
 
     public void start() throws Exception {
@@ -101,30 +117,102 @@ public class GraphApiServer {
 
         server.createContext("/api/graph", exchange -> {
             if (handleOptions(exchange)) return;
-            String userId = validateAndGetUserId(exchange);
-            if (userId == null) return;
-            MetadataStore userMetaStore = getMetadataStoreFor(userId);
-            writeJson(exchange, 200, new GraphService(userMetaStore).graphJson());
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+            
+            List<ShareStore.ShareRecord> peerShares = shareStore.getSharesForPeer(session.email);
+            List<GraphService.SharedMetadataStoreInfo> sharedStores = new ArrayList<>();
+            for (int i = 0; i < peerShares.size(); i++) {
+                ShareStore.ShareRecord share = peerShares.get(i);
+                MetadataStore ownerMetaStore = getMetadataStoreFor(share.ownerUid());
+                sharedStores.add(new GraphService.SharedMetadataStoreInfo(i + 1, ownerMetaStore, share.workspaceNodeId(), share.ownerEmail()));
+            }
+            
+            writeJson(exchange, 200, new GraphService(userMetaStore).combinedGraphJson(sharedStores));
         });
         
         server.createContext("/api/list", exchange -> {
             if (handleOptions(exchange)) return;
-            String userId = validateAndGetUserId(exchange);
-            if (userId == null) return;
-            MetadataStore userMetaStore = getMetadataStoreFor(userId);
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
             int parentId = Integer.parseInt(query.getOrDefault("parentId", "0"));
+
+            if (parentId >= 10000000) {
+                int shareIndex = parentId / 10000000;
+                int localParentId = parentId % 10000000;
+                
+                List<ShareStore.ShareRecord> activeShares = shareStore.getSharesForPeer(session.email);
+                if (shareIndex <= 0 || shareIndex > activeShares.size()) {
+                    writeJson(exchange, 403, "{\"error\":\"Access denied\"}");
+                    return;
+                }
+                ShareStore.ShareRecord record = activeShares.get(shareIndex - 1);
+                MetadataStore sharedMetaStore = getMetadataStoreFor(record.ownerUid());
+                writeJson(exchange, 200, sharedChildrenJson(sharedMetaStore, localParentId, shareIndex));
+                return;
+            }
+
+            if (parentId == 0) {
+                MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+                List<ShareStore.ShareRecord> activeShares = shareStore.getSharesForPeer(session.email);
+                if (activeShares.isEmpty()) {
+                    writeJson(exchange, 200, userMetaStore.childrenJson(0));
+                    return;
+                }
+                
+                StringBuilder sb = new StringBuilder("{\"parentId\":0,\"nodes\":[");
+                boolean first = true;
+                for (VaultNode node : userMetaStore.allNodes()) {
+                    if (node.parentId() == 0) {
+                        if (!first) sb.append(",");
+                        appendChildrenNodeJson(sb, node, 0, false);
+                        first = false;
+                    }
+                }
+                for (int i = 0; i < activeShares.size(); i++) {
+                    ShareStore.ShareRecord share = activeShares.get(i);
+                    MetadataStore ownerMetaStore = getMetadataStoreFor(share.ownerUid());
+                    VaultNode sharedRoot = ownerMetaStore.getNode(share.workspaceNodeId());
+                    if (sharedRoot != null) {
+                        if (!first) sb.append(",");
+                        int offset = (i + 1) * 10000000;
+                        appendChildrenNodeJson(sb, sharedRoot, offset, true);
+                        first = false;
+                    }
+                }
+                sb.append("],\"files\":[");
+                first = true;
+                for (com.polyvault.metadata.FileRecord file : userMetaStore.allFiles()) {
+                    VaultNode node = userMetaStore.getNode(file.nodeId());
+                    if (!file.deleted() && node != null && node.parentId() == 0) {
+                        if (!first) sb.append(",");
+                        appendChildrenFileJson(sb, file, 0);
+                        first = false;
+                    }
+                }
+                sb.append("]}");
+                writeJson(exchange, 200, sb.toString());
+                return;
+            }
+
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
             writeJson(exchange, 200, userMetaStore.childrenJson(parentId));
         });
         
         server.createContext("/api/nodes", exchange -> {
             if (handleOptions(exchange)) return;
-            String userId = validateAndGetUserId(exchange);
-            if (userId == null) return;
-            MetadataStore userMetaStore = getMetadataStoreFor(userId);
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
                 int parentId = Integer.parseInt(query.getOrDefault("parentId", "0"));
+                if (parentId >= 10000000) {
+                    writeJson(exchange, 403, "{\"error\":\"Cannot modify read-only shared workspace\"}");
+                    return;
+                }
+                MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
                 VaultNode node = userMetaStore.createNode(parentId, query.getOrDefault("type", "FOLDER"), query.getOrDefault("title", "Untitled"));
                 writeJson(exchange, 200, "{\"nodeId\":" + node.id() + ",\"message\":\"Node created\"}");
                 return;
@@ -132,6 +220,11 @@ public class GraphApiServer {
             if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
                 int nodeId = Integer.parseInt(query.get("nodeId"));
+                if (nodeId >= 10000000) {
+                    writeJson(exchange, 403, "{\"error\":\"Cannot modify read-only shared workspace\"}");
+                    return;
+                }
+                MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
                 userMetaStore.deleteNode(nodeId);
                 writeJson(exchange, 200, "{\"message\":\"Node deleted recursively\"}");
                 return;
@@ -141,12 +234,16 @@ public class GraphApiServer {
         
         server.createContext("/api/nodes/update", exchange -> {
             if (handleOptions(exchange)) return;
-            String userId = validateAndGetUserId(exchange);
-            if (userId == null) return;
-            MetadataStore userMetaStore = getMetadataStoreFor(userId);
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
                 int nodeId = Integer.parseInt(query.get("nodeId"));
+                if (nodeId >= 10000000) {
+                    writeJson(exchange, 403, "{\"error\":\"Cannot modify read-only shared workspace\"}");
+                    return;
+                }
+                MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
                 String color = query.getOrDefault("color", "");
                 String shape = query.getOrDefault("shape", "circle");
                 boolean important = Boolean.parseBoolean(query.getOrDefault("important", "false"));
@@ -162,18 +259,23 @@ public class GraphApiServer {
         
         server.createContext("/api/upload", exchange -> {
             if (handleOptions(exchange)) return;
-            String userId = validateAndGetUserId(exchange);
-            if (userId == null) return;
-            MetadataStore userMetaStore = getMetadataStoreFor(userId);
-            StorageService userStoreService = getStorageServiceFor(userId, userMetaStore);
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 writeJson(exchange, 405, "{\"error\":\"POST required\"}");
                 return;
             }
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+            int parentId = Integer.parseInt(query.getOrDefault("parentId", "0"));
+            if (parentId >= 10000000) {
+                writeJson(exchange, 403, "{\"error\":\"Cannot upload to read-only shared workspace\"}");
+                return;
+            }
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+            StorageService userStoreService = getStorageServiceFor(session.userId, userMetaStore);
             byte[] body = exchange.getRequestBody().readAllBytes();
             StoredFile stored = userStoreService.store(
-                    Integer.parseInt(query.getOrDefault("parentId", "0")),
+                    parentId,
                     query.getOrDefault("filename", "upload.bin"),
                     query.getOrDefault("title", query.getOrDefault("filename", "Uploaded file")),
                     query.getOrDefault("type", "file"),
@@ -186,20 +288,41 @@ public class GraphApiServer {
         
         server.createContext("/api/download", exchange -> {
             if (handleOptions(exchange)) return;
-            String userId = validateAndGetUserId(exchange);
-            if (userId == null) return;
-            MetadataStore userMetaStore = getMetadataStoreFor(userId);
-            StorageService userStoreService = getStorageServiceFor(userId, userMetaStore);
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
             Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
             int fileId = Integer.parseInt(query.get("fileId"));
             String versionValue = query.getOrDefault("version", "latest");
+            
+            MetadataStore activeMetaStore;
+            StorageService activeStoreService;
+            int localFileId;
+            
+            if (fileId >= 10000000) {
+                int shareIndex = fileId / 10000000;
+                localFileId = fileId % 10000000;
+                
+                List<ShareStore.ShareRecord> activeShares = shareStore.getSharesForPeer(session.email);
+                if (shareIndex <= 0 || shareIndex > activeShares.size()) {
+                    writeJson(exchange, 403, "{\"error\":\"Access denied\"}");
+                    return;
+                }
+                ShareStore.ShareRecord record = activeShares.get(shareIndex - 1);
+                activeMetaStore = getMetadataStoreFor(record.ownerUid());
+                activeStoreService = getStorageServiceFor(record.ownerUid(), activeMetaStore);
+            } else {
+                localFileId = fileId;
+                activeMetaStore = getMetadataStoreFor(session.userId);
+                activeStoreService = getStorageServiceFor(session.userId, activeMetaStore);
+            }
+            
             FileVersion version = "latest".equalsIgnoreCase(versionValue)
-                    ? userMetaStore.latestVersion(fileId)
-                    : userMetaStore.version(fileId, Integer.parseInt(versionValue));
+                    ? activeMetaStore.latestVersion(localFileId)
+                    : activeMetaStore.version(localFileId, Integer.parseInt(versionValue));
             ByteArrayOutputStream body = new ByteArrayOutputStream();
             
             try {
-                userStoreService.writeDecompressedBody(version, body);
+                activeStoreService.writeDecompressedBody(version, body);
             } catch (SecurityException se) {
                 LOGGER.log(Level.WARNING, "Directory traversal blocked: {0}", se.getMessage());
                 writeJson(exchange, 403, "{\"error\":\"Forbidden: directory traversal blocked\"}");
@@ -208,8 +331,8 @@ public class GraphApiServer {
             
             byte[] bytes = body.toByteArray();
 
-            com.polyvault.metadata.FileRecord fileRecord = userMetaStore.allFiles().stream()
-                    .filter(f -> f.id() == fileId)
+            com.polyvault.metadata.FileRecord fileRecord = activeMetaStore.allFiles().stream()
+                    .filter(f -> f.id() == localFileId)
                     .findFirst()
                     .orElse(null);
             String filename = fileRecord != null ? fileRecord.originalFilename() : "download.bin";
@@ -246,23 +369,94 @@ public class GraphApiServer {
             exchange.getResponseBody().write(bytes);
             exchange.close();
         });
+
+        server.createContext("/api/share", exchange -> {
+            if (handleOptions(exchange)) return;
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                writeJson(exchange, 405, "{\"error\":\"POST required\"}");
+                return;
+            }
+            Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+            int nodeId = Integer.parseInt(query.get("nodeId"));
+            String email = query.get("email").trim().toLowerCase();
+            
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+            if (userMetaStore.getNode(nodeId) == null) {
+                writeJson(exchange, 403, "{\"error\":\"Access denied: workspace not found\"}");
+                return;
+            }
+            
+            shareStore.addShare(session.userId, session.email, nodeId, email, "viewer");
+            writeJson(exchange, 200, "{\"message\":\"Workspace shared successfully\"}");
+        });
+
+        server.createContext("/api/shares", exchange -> {
+            if (handleOptions(exchange)) return;
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
+            Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+            int nodeId = Integer.parseInt(query.get("nodeId"));
+            
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+            if (userMetaStore.getNode(nodeId) == null) {
+                writeJson(exchange, 403, "{\"error\":\"Access denied\"}");
+                return;
+            }
+            
+            List<ShareStore.ShareRecord> records = shareStore.getSharesByOwner(session.userId).stream()
+                    .filter(r -> r.workspaceNodeId() == nodeId)
+                    .collect(Collectors.toList());
+            
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < records.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append("{\"email\":\"").append(Json.escape(records.get(i).peerEmail())).append("\",")
+                        .append("\"createdAt\":\"").append(Json.escape(records.get(i).createdAt())).append("\"}");
+            }
+            sb.append("]");
+            writeJson(exchange, 200, sb.toString());
+        });
+
+        server.createContext("/api/share/revoke", exchange -> {
+            if (handleOptions(exchange)) return;
+            UserSessionInfo session = validateAndGetSession(exchange);
+            if (session == null) return;
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                writeJson(exchange, 405, "{\"error\":\"POST required\"}");
+                return;
+            }
+            Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+            int nodeId = Integer.parseInt(query.get("nodeId"));
+            String email = query.get("email").trim().toLowerCase();
+            
+            MetadataStore userMetaStore = getMetadataStoreFor(session.userId);
+            if (userMetaStore.getNode(nodeId) == null) {
+                writeJson(exchange, 403, "{\"error\":\"Access denied\"}");
+                return;
+            }
+            
+            shareStore.removeShare(session.userId, nodeId, email);
+            writeJson(exchange, 200, "{\"message\":\"Share revoked successfully\"}");
+        });
         
         server.start();
         LOGGER.log(Level.INFO, "PolyVault web API listening on http://localhost:{0}/api/graph", String.valueOf(port));
     }
 
-    private String validateAndGetUserId(HttpExchange exchange) throws IOException {
+    private UserSessionInfo validateAndGetSession(HttpExchange exchange) throws IOException {
         String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7).trim();
-            String cachedUid = sessionTokenToUser.get(token);
-            if (cachedUid != null) {
-                return cachedUid;
+            UserSessionInfo cached = sessionTokenToUser.get(token);
+            if (cached != null) {
+                return cached;
             }
-            String verifiedUid = verifyFirebaseToken(token);
-            if (verifiedUid != null) {
-                sessionTokenToUser.put(token, verifiedUid);
-                return verifiedUid;
+            UserSessionInfo verified = verifyFirebaseToken(token);
+            if (verified != null) {
+                sessionTokenToUser.put(token, verified);
+                return verified;
             }
         }
         writeJson(exchange, 401, "{\"error\":\"Unauthorized\"}");
@@ -299,7 +493,7 @@ public class GraphApiServer {
         });
     }
 
-    private String verifyFirebaseToken(String token) {
+    private UserSessionInfo verifyFirebaseToken(String token) {
         if (firebaseApiKey == null || firebaseApiKey.isEmpty() || "YOUR_API_KEY".equals(firebaseApiKey)) {
             LOGGER.log(Level.WARNING, "Firebase API Key is missing or default in config.properties!");
             return null;
@@ -318,7 +512,9 @@ public class GraphApiServer {
             java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 String responseBody = response.body();
-                return extractJsonField(responseBody, "localId");
+                String uid = extractJsonField(responseBody, "localId");
+                String email = extractJsonField(responseBody, "email");
+                return new UserSessionInfo(uid, email);
             } else {
                 LOGGER.log(Level.WARNING, "Firebase token verification failed. Status code: {0}, Response: {1}",
                         new Object[]{response.statusCode(), response.body()});
@@ -361,6 +557,66 @@ public class GraphApiServer {
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
+    }
+
+    private String sharedChildrenJson(MetadataStore sharedMetaStore, int localParentId, int shareIndex) {
+        int offset = shareIndex * 10000000;
+        StringBuilder json = new StringBuilder();
+        int displayParentId = localParentId == 0 ? 0 : localParentId + offset;
+        json.append("{\"parentId\":").append(displayParentId).append(",\"nodes\":[");
+        boolean first = true;
+        for (VaultNode node : sharedMetaStore.allNodes()) {
+            if (node.parentId() == localParentId) {
+                if (!first) json.append(',');
+                int dispNodeId = node.id() + offset;
+                int dispParentId = node.parentId() == 0 ? 0 : node.parentId() + offset;
+                json.append("{\"id\":").append(dispNodeId)
+                        .append(",\"parentId\":").append(dispParentId)
+                        .append(",\"type\":\"").append(Json.escape(node.type()))
+                        .append("\",\"title\":\"").append(Json.escape(node.title()))
+                        .append("\",\"updatedAt\":\"").append(Json.escape(node.updatedAt()))
+                        .append("\",\"readOnly\":true}");
+                first = false;
+            }
+        }
+        json.append("],\"files\":[");
+        first = true;
+        for (com.polyvault.metadata.FileRecord file : sharedMetaStore.allFiles()) {
+            VaultNode node = sharedMetaStore.getNode(file.nodeId());
+            if (node != null && node.parentId() == localParentId) {
+                if (!first) json.append(',');
+                int dispFileId = file.id() + offset;
+                int dispNodeId = file.nodeId() + offset;
+                json.append("{\"id\":").append(dispFileId)
+                        .append(",\"nodeId\":").append(dispNodeId)
+                        .append(",\"filename\":\"").append(Json.escape(file.originalFilename()))
+                        .append("\",\"type\":\"").append(Json.escape(file.fileType()))
+                        .append("\",\"currentVersion\":").append(file.currentVersion())
+                        .append("\",\"updatedAt\":\"").append(Json.escape(file.updatedAt()))
+                        .append("\",\"readOnly\":true}");
+                first = false;
+            }
+        }
+        json.append("]}");
+        return json.toString();
+    }
+
+    private void appendChildrenNodeJson(StringBuilder sb, VaultNode node, int offset, boolean readOnly) {
+        sb.append("{\"id\":").append(node.id() + offset)
+                .append(",\"parentId\":0")
+                .append(",\"type\":\"").append(Json.escape(node.type()))
+                .append("\",\"title\":\"").append(Json.escape(node.title()))
+                .append("\",\"updatedAt\":\"").append(Json.escape(node.updatedAt()))
+                .append("\",\"readOnly\":").append(readOnly).append("}");
+    }
+
+    private void appendChildrenFileJson(StringBuilder sb, com.polyvault.metadata.FileRecord file, int offset) {
+        sb.append("{\"id\":").append(file.id() + offset)
+                .append(",\"nodeId\":").append(file.nodeId() + offset)
+                .append(",\"filename\":\"").append(Json.escape(file.originalFilename()))
+                .append("\",\"type\":\"").append(Json.escape(file.fileType()))
+                .append("\",\"currentVersion\":").append(file.currentVersion())
+                .append("\",\"updatedAt\":\"").append(Json.escape(file.updatedAt())).append("\"}");
     }
 
     private Map<String, String> query(String rawQuery) {

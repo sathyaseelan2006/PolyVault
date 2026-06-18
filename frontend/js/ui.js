@@ -60,12 +60,16 @@ onAuthStateChanged(auth, async (user) => {
     if (inspectorTitle && (inspectorTitle.textContent === "My Vault" || inspectorTitle.textContent.endsWith("'s Vault"))) {
       inspectorTitle.textContent = `${friendlyName}'s Vault`;
     }
+    const filterPill = document.querySelector("#dashboard-view-filter");
+    if (filterPill) filterPill.style.display = "flex";
   } else {
     localStorage.removeItem("pv_session_token");
     if (userDisplay) {
       userDisplay.textContent = "";
       userDisplay.style.display = "none";
     }
+    const filterPill = document.querySelector("#dashboard-view-filter");
+    if (filterPill) filterPill.style.display = "none";
   }
 });
 
@@ -378,6 +382,112 @@ export function initUiEvents() {
       }
     });
   }
+
+  // Onboarding Collapsible Guide Toggle
+  const guideToggle = document.querySelector("#guide-header-toggle");
+  const guideBody = document.querySelector("#guide-body-content");
+  const guideArrow = document.querySelector("#guide-arrow");
+  if (guideToggle && guideBody && guideArrow) {
+    guideToggle.addEventListener("click", () => {
+      const isCollapsed = guideBody.style.display === "none";
+      if (isCollapsed) {
+        guideBody.style.display = "flex";
+        guideArrow.textContent = "▼";
+        guideArrow.style.transform = "rotate(0deg)";
+      } else {
+        guideBody.style.display = "none";
+        guideArrow.textContent = "▲";
+        guideArrow.style.transform = "rotate(180deg)";
+      }
+    });
+    // Set open initially
+    guideBody.style.display = "flex";
+  }
+
+  // Dashboard View Filter Click Listeners
+  const viewFilterGroup = document.querySelector("#dashboard-view-filter");
+  if (viewFilterGroup) {
+    const filterBtns = viewFilterGroup.querySelectorAll(".filter-btn");
+    filterBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        filterBtns.forEach(b => {
+          b.classList.remove("active");
+          b.style.background = "transparent";
+          b.style.color = "var(--text-secondary)";
+        });
+        btn.classList.add("active");
+        btn.style.background = "var(--gold-primary)";
+        btn.style.color = "#000";
+        
+        window.currentViewMode = btn.dataset.mode;
+        filterAndRenderGraph();
+      });
+    });
+  }
+
+  // Share mode toggle change event
+  const shareToggle = document.querySelector("#share-mode-toggle");
+  if (shareToggle) {
+    shareToggle.addEventListener("change", async (e) => {
+      const isShared = e.target.checked;
+      const statusEl = document.querySelector("#share-mode-status");
+      const controlsEl = document.querySelector("#sharing-controls-section");
+      
+      if (isShared) {
+        statusEl.textContent = "Shared";
+        statusEl.style.color = "var(--gold-primary)";
+        controlsEl.style.display = "flex";
+        if (window.activeShareNodeId) {
+          loadActiveShares(window.activeShareNodeId);
+        }
+      } else {
+        const listEl = document.querySelector("#active-shares-list");
+        const hasShares = listEl && listEl.querySelectorAll(".peer-share-row").length > 0;
+        if (hasShares) {
+          if (!confirm("Disabling sharing will revoke access for all peers. Proceed?")) {
+            e.target.checked = true;
+            return;
+          }
+          showToast("Revoking all shares...");
+          const rows = listEl.querySelectorAll(".peer-share-row span");
+          for (let row of rows) {
+            const email = row.textContent;
+            await request(`/api/share/revoke?nodeId=${window.activeShareNodeId}&email=${encodeURIComponent(email)}`, { method: "POST" });
+          }
+          showToast("All shares revoked.");
+        }
+        statusEl.textContent = "Private";
+        statusEl.style.color = "var(--text-secondary)";
+        controlsEl.style.display = "none";
+        if (window.activeShareNodeId) {
+          loadActiveShares(window.activeShareNodeId);
+        }
+      }
+    });
+  }
+
+  // Add peer button click event
+  const btnAddShare = document.querySelector("#btn-add-share");
+  if (btnAddShare) {
+    btnAddShare.addEventListener("click", async () => {
+      const emailInput = document.querySelector("#share-peer-email");
+      const email = emailInput.value.trim();
+      if (!email) {
+        showToast("Please enter peer email.");
+        return;
+      }
+      if (!window.activeShareNodeId) return;
+      showToast("Sharing workspace...");
+      try {
+        await request(`/api/share?nodeId=${window.activeShareNodeId}&email=${encodeURIComponent(email)}`, { method: "POST" });
+        showToast("Shared successfully!");
+        emailInput.value = "";
+        loadActiveShares(window.activeShareNodeId);
+      } catch (err) {
+        showToast("Sharing failed: " + err.message);
+      }
+    });
+  }
 }
 
 // Toast helper
@@ -423,6 +533,20 @@ export function inspect(node, graph) {
   selected.title.textContent = node.label || "Untitled";
   selected.copy.textContent = suggestionFor(node);
   selected.id.textContent = node.nodeId ? `#${node.nodeId}` : node.id;
+
+  const readOnlyBadge = document.querySelector("#read-only-badge");
+  const ownerDisplay = document.querySelector("#node-owner-display");
+  if (readOnlyBadge) {
+    readOnlyBadge.style.display = node.readOnly ? "block" : "none";
+  }
+  if (ownerDisplay) {
+    if (node.readOnly && node.ownerEmail) {
+      ownerDisplay.textContent = `Shared by ${node.ownerEmail}`;
+      ownerDisplay.style.display = "block";
+    } else {
+      ownerDisplay.style.display = "none";
+    }
+  }
 
   const stageTitle = document.querySelector("#stage-title");
   const stageKicker = document.querySelector("#stage-kicker");
@@ -478,15 +602,25 @@ export function inspect(node, graph) {
   const customShortcutSelect = document.querySelector("#custom-shortcut");
   const customizerPanel = document.querySelector("#customizer-panel");
   
-  if (node.id !== "vault-root") {
+  const sharingPanel = document.querySelector("#sharing-panel");
+  if (node.id !== "vault-root" && !node.readOnly) {
     if (customizerPanel) customizerPanel.style.display = "block";
     if (customColorSelect) customColorSelect.value = node.color || "";
     if (customShapeSelect) customShapeSelect.value = node.shape || "circle";
     if (chkFavorite) chkFavorite.checked = !!node.favorite;
     if (chkImportant) chkImportant.checked = !!node.important;
     if (customShortcutSelect) customShortcutSelect.value = node.shortcut || "";
+    
+    if (sharingPanel && (node.type === "workspace" || node.type === "folder")) {
+      sharingPanel.style.display = "block";
+      window.activeShareNodeId = node.nodeId;
+      loadActiveShares(node.nodeId);
+    } else {
+      if (sharingPanel) sharingPanel.style.display = "none";
+    }
   } else {
     if (customizerPanel) customizerPanel.style.display = "none";
+    if (sharingPanel) sharingPanel.style.display = "none";
   }
 
   // Visited history
@@ -514,7 +648,7 @@ export function inspect(node, graph) {
 
   const deleteBtn = document.querySelector("#delete-node-btn");
   if (deleteBtn) {
-    if (node.id !== "vault-root") {
+    if (node.id !== "vault-root" && !node.readOnly) {
       deleteBtn.style.display = "block";
       deleteBtn.onclick = () => deleteCurrentNode(node);
     } else {
@@ -522,7 +656,7 @@ export function inspect(node, graph) {
     }
   }
 
-  render(graph);
+  filterAndRenderGraph();
 }
 window.inspect = inspect; // Make it globally accessible for graph.js mousedown trigger
 
@@ -728,7 +862,7 @@ export function updateParentPathSelectors(graph) {
   const prevNodeVal = nodeParentSelect.value;
   const prevUploadVal = uploadParentSelect.value;
   
-  const folderNodes = graph.nodes.filter(n => n.type !== "file");
+  const folderNodes = graph.nodes.filter(n => n.type !== "file" && !n.readOnly);
   
   const pathsList = folderNodes.map(node => {
     let nodeId = parseInt(node.nodeId || "0");
@@ -887,20 +1021,22 @@ export async function loadChildren() {
     
     const nodes = data.nodes.map(node => {
       const icon = getSvgIcon(node.type.toLowerCase());
+      const sharedTag = node.readOnly ? ' <strong style="color:var(--cyan); font-size:9px;">[Shared]</strong>' : '';
       return `
         <div class="child-row clickable" onclick="selectNodeById(${node.id})">
           <strong style="display: inline-flex; align-items: center; gap: 6px;">${icon}${escapeHtml(node.title)}</strong>
-          <span>${node.type} (#${node.id})</span>
+          <span>${node.type} (#${node.id})${sharedTag}</span>
         </div>
       `;
     });
     
     const files = data.files.map(file => {
       const icon = getSvgIcon("file");
+      const sharedTag = file.readOnly ? ' <strong style="color:var(--cyan); font-size:9px;">[Shared]</strong>' : '';
       return `
         <div class="child-row clickable" onclick="selectNodeById(${file.nodeId})">
           <strong style="display: inline-flex; align-items: center; gap: 6px;">${icon}${escapeHtml(file.filename)}</strong>
-          <span>File #${file.id} (Version ${file.currentVersion})</span>
+          <span>File #${file.id} (Version ${file.currentVersion})${sharedTag}</span>
         </div>
       `;
     });
@@ -961,7 +1097,7 @@ export async function loadGraph() {
     updateParentPathSelectors(graph);
     updateBookmarksSidebar();
     loadChildren();
-    render(graph);
+    filterAndRenderGraph();
   } catch (error) {
     statusText.textContent = "OFFLINE";
     statusPill.style.borderColor = "rgba(239, 68, 68, 0.3)";

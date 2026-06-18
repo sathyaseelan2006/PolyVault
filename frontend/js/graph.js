@@ -236,6 +236,7 @@ export function colorFor(node) {
 }
 
 export function strokeFor(node) {
+  if (node.readOnly) return "var(--purple)";
   if (node.recency === "hot" || node.recency === "fresh") return "rgba(0, 240, 255, 0.8)";
   if (node.recency === "warm") return "rgba(139, 92, 246, 0.6)";
   return "rgba(255, 255, 255, 0.25)";
@@ -472,12 +473,37 @@ export function render(graph) {
     
     drawNodeShape(group, node, node.size || 24);
     
+    if (node.readOnly) {
+      const badgeG = el("g", {
+        transform: `translate(${(node.size || 24) * 0.7}, -${(node.size || 24) * 0.7})`
+      });
+      badgeG.append(el("circle", {
+        r: 7,
+        fill: "#090d16",
+        stroke: "var(--cyan)",
+        "stroke-width": 1.2
+      }));
+      badgeG.append(el("path", {
+        d: "M -3.5 3 A 3.5 3.5 0 0 1 3.5 3 M 0 -0.5 A 1.5 1.5 0 1 1 0 -3.5",
+        stroke: "var(--cyan)",
+        fill: "none",
+        "stroke-width": 0.9,
+        "stroke-linecap": "round"
+      }));
+      group.append(badgeG);
+    }
+    
     let labelText = short(node.label);
     if (node.shortcut) {
       labelText += ` [Alt+${node.shortcut.toUpperCase()}]`;
     }
     group.append(el("text", { class: "label", x: 0, y: -2 }, labelText));
-    group.append(el("text", { class: "subtitle", x: 0, y: 14 }, node.subtitle || node.type));
+    
+    let subtitleText = node.subtitle || node.type;
+    if (node.readOnly && node.ownerEmail) {
+      subtitleText = `By ${node.ownerEmail.split('@')[0]}`;
+    }
+    group.append(el("text", { class: "subtitle", x: 0, y: 14 }, subtitleText));
     
     // Listen to node selection and drag start
     group.addEventListener("mousedown", (e) => {

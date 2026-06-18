@@ -1713,3 +1713,52 @@ button svg.btn-icon,
   stroke-width: 0.5;
 }
 
+/* Onboarding guide steps styling */
+.guide-step {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 2px solid var(--gold-primary);
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+/* Peer Share Row in Active List */
+.peer-share-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  font-size: 10px;
+}
+.peer-share-row span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+  color: var(--text);
+}
+.peer-share-row button {
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 9px;
+  font-weight: 600;
+  margin: 0;
+  width: auto;
+}
+.peer-share-row button:hover {
+  text-decoration: underline;
+}
+
+/* View Filter Segmented styling hover overrides */
+.view-filter-segmented button:not(.active):hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--text) !important;
+}
+
