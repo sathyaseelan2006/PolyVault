@@ -1080,6 +1080,8 @@ window.selectNodeById = async function(nodeId) {
   } catch (err) {
     showToast("Error inspecting node: " + err.message);
   }
+};
+
 // Filter nodes and edges based on view mode and trigger render
 export function filterAndRenderGraph() {
   if (!window.currentGraph) return;
