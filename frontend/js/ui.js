@@ -1080,7 +1080,28 @@ window.selectNodeById = async function(nodeId) {
   } catch (err) {
     showToast("Error inspecting node: " + err.message);
   }
-};
+// Filter nodes and edges based on view mode and trigger render
+export function filterAndRenderGraph() {
+  if (!window.currentGraph) return;
+  const mode = window.currentViewMode || "all";
+  
+  let filteredNodes = [];
+  let filteredEdges = [];
+  
+  if (mode === "personal") {
+    filteredNodes = window.currentGraph.nodes.filter(n => n.id === "vault-root" || !n.readOnly);
+  } else if (mode === "shared") {
+    filteredNodes = window.currentGraph.nodes.filter(n => n.id === "vault-root" || n.readOnly);
+  } else {
+    filteredNodes = [...window.currentGraph.nodes];
+  }
+  
+  const nodeIds = new Set(filteredNodes.map(n => n.id));
+  filteredEdges = window.currentGraph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+  
+  render({ nodes: filteredNodes, edges: filteredEdges });
+}
+window.filterAndRenderGraph = filterAndRenderGraph;
 
 // Main Graph Loader coordinating SVG and UI lists
 export async function loadGraph() {
